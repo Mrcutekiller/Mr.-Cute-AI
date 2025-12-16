@@ -1,0 +1,7 @@
+{
+  "name": "Mr. Cute AI",
+  "description": "A fun, multi-personality conversational AI that you can talk to via text or real-time voice.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
