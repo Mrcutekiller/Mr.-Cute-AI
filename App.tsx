@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus } from 'lucide-react';
+import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus, RotateCcw } from 'lucide-react';
 import { ChatService } from './services/chatService';
 import { LiveService } from './services/liveService';
 import { Visualizer } from './components/Visualizer';
@@ -260,6 +260,16 @@ const App: React.FC = () => {
          // This timeout allows the effect to pick up the empty messages array
          initializedRef.current = false; // Ensure the effect runs
       }, 0);
+  };
+
+  const handleRestoreSession = (sessionToRestore: Message[]) => {
+      if (messages.length > 0) {
+          setArchivedSessions(prev => [messages, ...prev]);
+      }
+      setMessages(sessionToRestore);
+      setArchivedSessions(prev => prev.filter(s => s !== sessionToRestore));
+      setShowHistoryModal(false);
+      initializedRef.current = true;
   };
 
   const toggleTheme = () => {
@@ -863,9 +873,16 @@ const App: React.FC = () => {
                                           <p className="text-xs text-muted">{new Date(session[0]?.timestamp || Date.now()).toLocaleDateString()}</p>
                                       </div>
                                   </div>
-                                  <p className="text-xs text-muted line-clamp-2 pl-11">
+                                  <p className="text-xs text-muted line-clamp-2 pl-11 mb-3">
                                       {session.find(m => m.role === 'user')?.text || "No text preview"}
                                   </p>
+                                  <button 
+                                      onClick={() => handleRestoreSession(session)}
+                                      className="w-full py-2 bg-surface hover:bg-blue-500/10 hover:text-blue-500 text-xs font-medium text-muted transition-colors rounded-lg border border-border flex items-center justify-center gap-2"
+                                  >
+                                      <RotateCcw className="w-3 h-3" />
+                                      Restore Session
+                                  </button>
                               </div>
                           ))
                       )}
