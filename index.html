@@ -100,6 +100,43 @@
       
       .orb-ripple:nth-child(2) { animation-delay: 0.5s; }
       .orb-ripple:nth-child(3) { animation-delay: 1s; }
+
+      /* Markdown Styles */
+      .markdown-body p { margin-bottom: 0.75em; }
+      .markdown-body p:last-child { margin-bottom: 0; }
+      .markdown-body strong { font-weight: 600; color: inherit; }
+      .markdown-body em { font-style: italic; }
+      .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.75em; }
+      .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.75em; }
+      .markdown-body li { margin-bottom: 0.25em; }
+      .markdown-body code { 
+        background-color: rgba(128, 128, 128, 0.15); 
+        padding: 0.1em 0.3em; 
+        border-radius: 0.25em; 
+        font-family: monospace; 
+        font-size: 0.9em;
+      }
+      .markdown-body pre {
+        background-color: rgba(0, 0, 0, 0.2);
+        padding: 1em;
+        border-radius: 0.5em;
+        overflow-x: auto;
+        margin-bottom: 0.75em;
+      }
+      .markdown-body pre code {
+        background-color: transparent;
+        padding: 0;
+        color: inherit;
+      }
+      .markdown-body h1 { font-size: 1.5em; font-weight: 700; margin-bottom: 0.5em; }
+      .markdown-body h2 { font-size: 1.25em; font-weight: 600; margin-bottom: 0.5em; }
+      .markdown-body h3 { font-size: 1.1em; font-weight: 600; margin-bottom: 0.5em; }
+      .markdown-body blockquote {
+        border-left: 3px solid var(--border);
+        padding-left: 1em;
+        color: var(--text-muted);
+        margin-bottom: 0.75em;
+      }
     </style>
   <script type="importmap">
 {
@@ -109,7 +146,10 @@
     "react/": "https://esm.sh/react@^19.2.3/",
     "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
     "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
-    "clsx": "https://esm.sh/clsx@^2.1.1"
+    "clsx": "https://esm.sh/clsx@^2.1.1",
+    "react-markdown": "https://esm.sh/react-markdown@9",
+    "remark-gfm": "https://esm.sh/remark-gfm@4",
+    "@vercel/speed-insights/react": "https://esm.sh/@vercel/speed-insights/react"
   }
 }
 </script>

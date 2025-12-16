@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus, RotateCcw } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus, RotateCcw, Wifi, WifiOff } from 'lucide-react';
 import { ChatService } from './services/chatService';
 import { LiveService } from './services/liveService';
 import { Visualizer } from './components/Visualizer';
@@ -120,10 +122,11 @@ const App: React.FC = () => {
 
   // Scroll to bottom
   useEffect(() => {
-    if (!isVoiceActive && user.isLoggedIn) {
+    // Only scroll if we aren't heavily using the voice panel which might obscure
+    if (user.isLoggedIn) {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isVoiceActive, user.isLoggedIn]);
+  }, [messages, user.isLoggedIn, isVoiceActive]);
 
   // Initialize Chat & Proactive Greeting
   useEffect(() => {
@@ -255,10 +258,8 @@ const App: React.FC = () => {
       setMessages([]);
       initializedRef.current = false;
       // Re-trigger greeting or just let user type
-      // Optional: Manually trigger greeting again
       setTimeout(() => {
-         // This timeout allows the effect to pick up the empty messages array
-         initializedRef.current = false; // Ensure the effect runs
+         initializedRef.current = false;
       }, 0);
   };
 
@@ -346,6 +347,7 @@ const App: React.FC = () => {
 
   const startVoiceMode = async () => {
     setIsVoiceActive(true);
+    setVoiceStatus('disconnected'); // Start state
     if (liveServiceRef.current) await liveServiceRef.current.disconnect();
 
     const liveService = new LiveService(
@@ -369,7 +371,8 @@ const App: React.FC = () => {
   // --- Render ---
 
   if (!user.isLoggedIn) {
-      // Auth Screen - Always in Dark Mode style or custom aesthetic
+      // Auth Screen - unchanged code structure mostly, omitted for brevity as not requested to change
+      // Re-using the exact block from previous file content for Auth UI:
       return (
         <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-black text-white">
             <div className="absolute inset-0 z-0">
@@ -395,7 +398,6 @@ const App: React.FC = () => {
                 )}
   
                 <form onSubmit={handleAuthSubmit} className="space-y-4">
-                    {/* Common Fields */}
                     <div className="space-y-3">
                         <div className="relative">
                             <Mail className="absolute left-3 top-3.5 w-4 h-4 text-zinc-500" />
@@ -421,10 +423,8 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Sign Up Specific Fields */}
                     {authMode === 'signup' && (
                         <div className="space-y-4 animate-in slide-in-from-top-2 fade-in">
-                            {/* Avatar Picker */}
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="block text-xs font-medium text-zinc-400 pl-1">Choose Avatar</label>
@@ -638,7 +638,11 @@ const App: React.FC = () => {
       
       {/* CHAT AREA */}
       <main className="flex-1 relative w-full h-full">
-        <div className="flex-1 overflow-y-auto px-4 pt-20 pb-40 space-y-6 no-scrollbar h-full w-full">
+        {/* Adjusted padding-bottom to handle both standard input and voice panel */}
+        <div className={clsx(
+            "flex-1 overflow-y-auto px-4 pt-20 space-y-6 no-scrollbar h-full w-full",
+            isVoiceActive ? "pb-[320px]" : "pb-40"
+        )}>
             {messages.map((msg) => (
                 <div
                     key={msg.id}
@@ -647,7 +651,7 @@ const App: React.FC = () => {
                     msg.role === 'user' ? "justify-end" : "justify-start"
                     )}
                 >
-                    <div className={clsx("flex gap-2 max-w-[85%]", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}>
+                    <div className={clsx("flex gap-2 max-w-[95%] sm:max-w-[85%]", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}>
                         
                         {/* User Avatar */}
                         {msg.role === 'user' && (
@@ -679,17 +683,19 @@ const App: React.FC = () => {
                                 </div>
                             )}
                             
-                            {/* Text Bubble */}
+                            {/* Text Bubble with Markdown */}
                             {msg.text && (
                                 <div
                                 className={clsx(
-                                    "px-5 py-3 text-[15px] leading-relaxed shadow-sm",
+                                    "px-5 py-3 text-[15px] leading-relaxed shadow-sm markdown-body",
                                     msg.role === 'user'
                                     ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-sm"
                                     : "bg-surface border border-border text-content rounded-2xl rounded-tl-sm"
                                 )}
                                 >
-                                {msg.text}
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {msg.text}
+                                    </ReactMarkdown>
                                 </div>
                             )}
                         </div>
@@ -712,7 +718,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* INPUT AREA */}
+      {/* INPUT AREA (Standard) - Hidden when Voice Active */}
       <div className={clsx(
           "fixed bottom-0 left-0 right-0 p-4 pb-6 z-40 bg-surface/80 backdrop-blur-xl border-t border-border transition-transform duration-300",
           isVoiceActive ? "translate-y-full" : "translate-y-0"
@@ -794,53 +800,62 @@ const App: React.FC = () => {
         </div>
       </div>
       
-      {/* --- Voice Overlay --- */}
+      {/* --- Voice Panel (Replaces Full Screen Overlay) --- */}
       {isVoiceActive && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-3xl animate-in fade-in duration-500">
-             {/* Abstract Glowing Orb */}
-            <div className="relative mb-8 w-40 h-40 flex items-center justify-center">
-                {/* Core */}
-                <div className={clsx(
-                    "w-24 h-24 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 blur-sm shadow-[0_0_50px_rgba(59,130,246,0.5)] z-10 relative flex items-center justify-center transition-all duration-300",
-                    voiceStatus === 'speaking' ? "scale-110 shadow-[0_0_80px_rgba(59,130,246,0.8)]" : "scale-100"
-                )}>
-                   <div className="w-20 h-20 bg-white rounded-full opacity-20 blur-md absolute top-2 left-2"></div>
-                   <Mic className={clsx("w-8 h-8 text-white z-20 transition-opacity", voiceStatus === 'speaking' ? "opacity-100" : "opacity-50")} />
-                </div>
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-2xl border-t border-border rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] animate-in slide-in-from-bottom duration-300">
+            <div className="max-w-xl mx-auto p-6 flex flex-col items-center">
                 
-                {/* Ripples */}
-                {(voiceStatus === 'listening' || voiceStatus === 'speaking') && (
-                    <>
-                        <div className="orb-ripple w-full h-full border-blue-400/30"></div>
-                        <div className="orb-ripple w-full h-full border-blue-400/30" style={{ animationDelay: '0.5s' }}></div>
-                    </>
-                )}
-            </div>
+                {/* Voice Status Indicator Badge */}
+                <div className={clsx(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-full mb-6 border transition-all duration-300",
+                    voiceStatus === 'speaking' ? "bg-blue-500/10 border-blue-500/30" : 
+                    voiceStatus === 'listening' ? "bg-green-500/10 border-green-500/30" :
+                    "bg-zinc-500/10 border-zinc-500/20"
+                )}>
+                    <div className={clsx(
+                        "w-2 h-2 rounded-full transition-all duration-300",
+                        voiceStatus === 'speaking' ? "bg-blue-500 animate-pulse" : 
+                        voiceStatus === 'listening' ? "bg-green-500" :
+                        "bg-zinc-400"
+                    )} />
+                    <span className={clsx(
+                        "text-xs font-semibold tracking-wide uppercase",
+                        voiceStatus === 'speaking' ? "text-blue-500" : 
+                        voiceStatus === 'listening' ? "text-green-500" :
+                        "text-zinc-500"
+                    )}>
+                        {voiceStatus === 'speaking' ? 'Speaking' : 
+                         voiceStatus === 'listening' ? 'Listening' :
+                         voiceStatus === 'connected' ? 'Connected' : 'Connecting...'}
+                    </span>
+                </div>
 
-            {/* Visualizer - Replaces static text when active */}
-            <div className="h-16 w-full max-w-xs flex items-center justify-center mb-6">
-                {(voiceStatus === 'speaking' || voiceStatus === 'listening') ? (
-                    <Visualizer volume={volume} isActive={true} />
-                ) : (
-                    <div className="h-12" /> // Spacer
-                )}
-            </div>
-            
-            <div className="text-center space-y-2 px-8">
-                <h2 className="text-3xl font-semibold tracking-tighter text-content">
-                    {voiceStatus === 'speaking' ? 'Speaking...' : voiceStatus === 'listening' ? 'Listening...' : 'Connecting...'}
-                </h2>
-                <p className="text-muted font-medium tracking-wide text-sm uppercase">
-                    {PERSONALITY_LABELS[personality]} Mode
-                </p>
-            </div>
+                {/* Orb & Visualizer Container */}
+                <div className="relative w-full flex items-center justify-center mb-8 h-32">
+                     {/* The Glow Effect */}
+                     <div className={clsx(
+                        "absolute w-32 h-32 rounded-full transition-all duration-500 opacity-20 blur-2xl",
+                        voiceStatus === 'speaking' ? "bg-blue-500 scale-125" : 
+                        voiceStatus === 'listening' ? "bg-green-500 scale-100" :
+                        "bg-zinc-500 scale-75"
+                     )} />
+                     
+                     {/* Visualizer stays center */}
+                     <div className="z-10 w-full max-w-[200px]">
+                        <Visualizer volume={volume} isActive={voiceStatus === 'speaking' || voiceStatus === 'listening'} />
+                     </div>
+                </div>
 
-            <button 
-                onClick={endVoiceMode}
-                className="absolute bottom-10 w-16 h-16 rounded-full bg-surface border border-border text-content flex items-center justify-center hover:bg-red-500/10 hover:border-red-500 hover:text-red-500 transition-all duration-300 group shadow-lg"
-            >
-                <X className="w-6 h-6 group-hover:scale-110 transition-transform" strokeWidth={1.5} />
-            </button>
+                <div className="flex items-center gap-6 w-full justify-center">
+                     <button 
+                        onClick={endVoiceMode}
+                        className="w-14 h-14 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-lg"
+                        title="End Call"
+                    >
+                        <X className="w-6 h-6" strokeWidth={2} />
+                    </button>
+                </div>
+            </div>
         </div>
       )}
 
@@ -914,7 +929,6 @@ const App: React.FC = () => {
                   </div>
 
                   <form onSubmit={handleUpdateProfile} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
-                        
                         {/* Avatar Section */}
                         <div className="flex flex-col items-center">
                             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-border mb-4 bg-background">
