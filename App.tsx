@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus, RotateCcw, Wifi, WifiOff } from 'lucide-react';
+import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Heart, ChevronDown, Check, Zap, FileText, Image as ImageIcon, LogOut, History, Bot, HeartHandshake, Code, Utensils, Mail, Lock, User as UserIcon, Calendar, ArrowRight, Loader2, Star, TrendingUp, Flame, Video, Smile, Gamepad2, Settings, Edit2, Save, Shuffle, Cloud, Moon, Sun, MessageSquarePlus, RotateCcw, Wifi, WifiOff, Copy } from 'lucide-react';
 import { ChatService } from './services/chatService';
 import { LiveService } from './services/liveService';
 import { Visualizer } from './components/Visualizer';
@@ -27,6 +27,33 @@ const PERSONALITY_ICONS: Record<Personality, React.ReactNode> = {
   [Personality.YOUTUBER]: <Video className="w-4 h-4" />,
   [Personality.FUN]: <Smile className="w-4 h-4" />,
   [Personality.GAMER]: <Gamepad2 className="w-4 h-4" />,
+};
+
+const CopyButton = ({ text, className }: { text: string, className?: string }) => {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return (
+    <button 
+      onClick={handleCopy}
+      className={clsx(
+        "p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100", 
+        className
+      )}
+      title="Copy message"
+    >
+      {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
 };
 
 interface UserDataStore {
@@ -71,11 +98,16 @@ const App: React.FC = () => {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Refs
-  const chatServiceRef = useRef<ChatService>(new ChatService());
+  const chatServiceRef = useRef<ChatService | null>(null);
   const liveServiceRef = useRef<LiveService | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
+
+  // Lazy Init ChatService
+  if (!chatServiceRef.current) {
+    chatServiceRef.current = new ChatService();
+  }
 
   // --- Effects ---
 
@@ -130,7 +162,7 @@ const App: React.FC = () => {
 
   // Initialize Chat & Proactive Greeting
   useEffect(() => {
-    if (!user.isLoggedIn) return;
+    if (!user.isLoggedIn || !chatServiceRef.current) return;
 
     chatServiceRef.current.initChat(personality, user);
 
@@ -301,7 +333,7 @@ const App: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if ((!inputText.trim() && !attachment) || isLoading) return;
+    if ((!inputText.trim() && !attachment) || isLoading || !chatServiceRef.current) return;
 
     const currentText = inputText;
     const currentAttachment = attachment;
@@ -687,7 +719,7 @@ const App: React.FC = () => {
                             {msg.text && (
                                 <div
                                 className={clsx(
-                                    "px-5 py-3 text-[15px] leading-relaxed shadow-sm markdown-body",
+                                    "px-5 py-3 text-[15px] leading-relaxed shadow-sm markdown-body relative group",
                                     msg.role === 'user'
                                     ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-sm"
                                     : "bg-surface border border-border text-content rounded-2xl rounded-tl-sm"
@@ -696,6 +728,15 @@ const App: React.FC = () => {
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                         {msg.text}
                                     </ReactMarkdown>
+                                    <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <CopyButton 
+                                            text={msg.text} 
+                                            className={msg.role === 'user' 
+                                                ? "text-blue-100 hover:bg-white/20 hover:text-white" 
+                                                : "text-muted hover:text-content hover:bg-black/5 dark:hover:bg-white/10"
+                                            } 
+                                        />
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -727,15 +768,26 @@ const App: React.FC = () => {
             
             {/* Attachment Preview */}
             {attachment && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-background rounded-lg w-fit border border-border animate-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-3 px-3 py-2 bg-background rounded-xl w-fit border border-border animate-in slide-in-from-bottom-2 shadow-sm mb-2">
                     {attachment.mimeType.startsWith('image/') ? (
-                         <ImageIcon className="w-4 h-4 text-blue-500" />
+                         <div className="relative h-12 w-12 shrink-0 rounded-lg overflow-hidden border border-border bg-black/5">
+                            <img 
+                                src={`data:${attachment.mimeType};base64,${attachment.data}`} 
+                                alt="Preview" 
+                                className="h-full w-full object-cover"
+                            />
+                         </div>
                     ) : (
-                         <FileText className="w-4 h-4 text-orange-500" />
+                         <div className="h-10 w-10 shrink-0 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                            <FileText className="w-5 h-5 text-orange-500" />
+                         </div>
                     )}
-                    <span className="text-xs text-content max-w-[200px] truncate">{attachment.fileName}</span>
-                    <button onClick={() => setAttachment(null)} className="ml-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full p-1">
-                        <X className="w-3 h-3 text-muted" />
+                    <div className="flex flex-col min-w-0 mr-2">
+                        <span className="text-xs font-medium text-content max-w-[150px] truncate">{attachment.fileName || "Image"}</span>
+                         <span className="text-[10px] text-muted uppercase">{attachment.mimeType.split('/')[1] || 'FILE'}</span>
+                    </div>
+                    <button onClick={() => setAttachment(null)} className="hover:bg-red-500/10 hover:text-red-500 text-muted p-1.5 rounded-full transition-colors">
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
             )}
