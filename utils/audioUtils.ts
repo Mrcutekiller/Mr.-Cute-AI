@@ -1,4 +1,7 @@
-import { Blob as GenAIBlob } from '@google/genai';
+interface RealtimeAudioBlob {
+  data: string;
+  mimeType: string;
+}
 
 export function decode(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -38,7 +41,7 @@ export async function decodeAudioData(
   return buffer;
 }
 
-export function createBlob(data: Float32Array): GenAIBlob {
+export function createBlob(data: Float32Array): RealtimeAudioBlob {
   const l = data.length;
   const int16 = new Int16Array(l);
   for (let i = 0; i < l; i++) {

@@ -17,6 +17,8 @@ export enum Personality {
   GAMER = 'GAMER'
 }
 
+export type AIProvider = 'google' | 'openai';
+
 export interface User {
   name: string;
   age: string;
@@ -25,6 +27,10 @@ export interface User {
   gender: string;
   avatar: string;
   theme: 'dark' | 'light';
+  aiProvider: AIProvider;
+  googleApiKey?: string;
+  openaiApiKey?: string;
+  password?: string;
   isLoggedIn: boolean;
 }
 
