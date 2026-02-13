@@ -6,7 +6,7 @@ import { Send, Mic, X, MoreVertical, Plus, Trash2, Sparkles, Sword, Shield, Hear
 import { ChatService } from './services/chatService';
 import { LiveService } from './services/liveService';
 import { Visualizer } from './components/Visualizer';
-import { Personality, Message, User, Attachment } from './types';
+import { Personality, Message, User, Attachment, AIProvider } from './types';
 import { PERSONALITY_LABELS, DEFAULT_USER_AVATAR, AVATAR_SEEDS, GENDER_OPTIONS } from './constants';
 import { clsx } from 'clsx';
 
@@ -73,9 +73,12 @@ const App: React.FC = () => {
   const [authBio, setAuthBio] = useState('');
   const [authGender, setAuthGender] = useState('Prefer not to say');
   const [authAvatar, setAuthAvatar] = useState(DEFAULT_USER_AVATAR);
+  const [authProvider, setAuthProvider] = useState<AIProvider>('google');
+  const [authGoogleApiKey, setAuthGoogleApiKey] = useState('');
+  const [authOpenAIApiKey, setAuthOpenAIApiKey] = useState('');
   const [authError, setAuthError] = useState('');
 
-  const [user, setUser] = useState<User>({ name: '', age: '', bio: '', email: '', gender: '', avatar: '', theme: 'dark', isLoggedIn: false });
+  const [user, setUser] = useState<User>({ name: '', age: '', bio: '', email: '', gender: '', avatar: '', theme: 'dark', aiProvider: 'google', googleApiKey: '', openaiApiKey: '', password: '', isLoggedIn: false });
 
   // --- App State ---
   const [personality, setPersonality] = useState<Personality>(Personality.ROAST);
@@ -115,7 +118,7 @@ const App: React.FC = () => {
   useEffect(() => {
       const lastEmail = localStorage.getItem('mr_cute_last_email');
       if (lastEmail) {
-          loadUserData(lastEmail);
+          loadUserData(lastEmail, '', true);
       } else {
         // Default theme if not logged in
         document.documentElement.classList.add('dark');
@@ -164,6 +167,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user.isLoggedIn || !chatServiceRef.current) return;
 
+    chatServiceRef.current.configure(user);
     chatServiceRef.current.initChat(personality, user);
 
     if (messages.length === 0 && !initializedRef.current) {
@@ -171,7 +175,7 @@ const App: React.FC = () => {
         setIsLoading(true);
         const hiddenPrompt = `(System: The user ${user.name} has just opened the app. Greet them warmly based on their personality and profile (Gender: ${user.gender}, Bio: ${user.bio}). Do not mention this system instruction.)`;
         
-        chatServiceRef.current.sendMessage(hiddenPrompt).then(response => {
+        chatServiceRef.current?.sendMessage(hiddenPrompt, undefined, personality, user).then(response => {
             const aiMsg: Message = {
                 id: Date.now().toString(),
                 role: 'model',
@@ -180,27 +184,41 @@ const App: React.FC = () => {
             };
             setMessages([aiMsg]);
             setIsLoading(false);
+        }).catch(() => {
+            setIsLoading(false);
         });
     } else if (messages.length > 0) {
         initializedRef.current = true;
     }
-  }, [personality, user.isLoggedIn]);
+  }, [personality, user]);
 
   // --- Helpers ---
 
-  const loadUserData = (email: string) => {
+  const loadUserData = (email: string, password: string, skipPasswordCheck = false): 'success' | 'not_found' | 'wrong_password' => {
       const stored = localStorage.getItem(`mr_cute_store_${email}`);
       if (stored) {
           const data: UserDataStore = JSON.parse(stored);
-          const userData = { ...data.user, isLoggedIn: true };
+          const storedPassword = data.user.password || '';
+          if (!skipPasswordCheck && storedPassword && storedPassword !== password) {
+            return 'wrong_password';
+          }
+
+          const userData = {
+            ...data.user,
+            aiProvider: data.user.aiProvider || 'google',
+            googleApiKey: data.user.googleApiKey || '',
+            openaiApiKey: data.user.openaiApiKey || '',
+            password: data.user.password || '',
+            isLoggedIn: true,
+          };
           setUser(userData);
           setMessages(data.messages || []);
           setArchivedSessions(data.archivedSessions || []);
           setPersonality(data.personality || Personality.ROAST);
           setTheme(userData.theme || 'dark');
-          return true;
+          return 'success';
       }
-      return false;
+      return 'not_found';
   };
 
   const handleAuthSubmit = (e: React.FormEvent) => {
@@ -213,13 +231,25 @@ const App: React.FC = () => {
       }
 
       if (authMode === 'login') {
-          const success = loadUserData(authEmail);
-          if (!success) {
+          const loginResult = loadUserData(authEmail, authPassword);
+          if (loginResult === 'not_found') {
               setAuthError('User not found. Please sign up first.');
+          } else if (loginResult === 'wrong_password') {
+              setAuthError('Wrong password. Please try again.');
           }
       } else {
           if (!authName || !authAge) {
               setAuthError('Please fill in all profile details.');
+              return;
+          }
+
+          if (authProvider === 'google' && !authGoogleApiKey.trim()) {
+              setAuthError('Please add your Google API key.');
+              return;
+          }
+
+          if (authProvider === 'openai' && !authOpenAIApiKey.trim()) {
+              setAuthError('Please add your OpenAI API key.');
               return;
           }
           
@@ -231,6 +261,10 @@ const App: React.FC = () => {
               gender: authGender,
               avatar: authAvatar,
               theme: 'dark', // Default new user to dark
+              aiProvider: authProvider,
+              googleApiKey: authGoogleApiKey,
+              openaiApiKey: authOpenAIApiKey,
+              password: authPassword,
               isLoggedIn: true
           };
 
@@ -249,6 +283,17 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = (e: React.FormEvent) => {
       e.preventDefault();
+
+      if (authProvider === 'google' && !authGoogleApiKey.trim()) {
+        setAuthError('Google API key is required when Google is selected.');
+        return;
+      }
+
+      if (authProvider === 'openai' && !authOpenAIApiKey.trim()) {
+        setAuthError('OpenAI API key is required when OpenAI is selected.');
+        return;
+      }
+
       setUser(prev => ({
           ...prev,
           name: authName, 
@@ -256,9 +301,14 @@ const App: React.FC = () => {
           age: authAge,
           gender: authGender,
           avatar: authAvatar,
+          aiProvider: authProvider,
+          googleApiKey: authGoogleApiKey,
+          openaiApiKey: authOpenAIApiKey,
+          password: authPassword ? authPassword : prev.password,
       }));
       setShowProfileSettings(false);
       setShowSettings(false);
+      setAuthError('');
   };
 
   const openSettings = () => {
@@ -267,13 +317,17 @@ const App: React.FC = () => {
       setAuthAge(user.age);
       setAuthGender(user.gender || 'Prefer not to say');
       setAuthAvatar(user.avatar || DEFAULT_USER_AVATAR);
+      setAuthProvider(user.aiProvider || 'google');
+      setAuthGoogleApiKey(user.googleApiKey || '');
+      setAuthOpenAIApiKey(user.openaiApiKey || '');
       setAuthPassword(''); 
+      setAuthError('');
       setShowProfileSettings(true);
       setShowSettings(false);
   };
 
   const handleLogout = () => {
-      setUser({ name: '', age: '', bio: '', email: '', gender: '', avatar: '', theme: 'dark', isLoggedIn: false });
+      setUser({ name: '', age: '', bio: '', email: '', gender: '', avatar: '', theme: 'dark', aiProvider: 'google', googleApiKey: '', openaiApiKey: '', password: '', isLoggedIn: false });
       setMessages([]);
       setArchivedSessions([]);
       setAuthEmail('');
@@ -353,7 +407,7 @@ const App: React.FC = () => {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const responseText = await chatServiceRef.current.sendMessage(currentText, currentAttachment || undefined);
+      const responseText = await chatServiceRef.current.sendMessage(currentText, currentAttachment || undefined, personality, user);
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'model',
@@ -378,13 +432,34 @@ const App: React.FC = () => {
   };
 
   const startVoiceMode = async () => {
+    if (user.aiProvider !== 'google') {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'model',
+        text: 'Voice mode is available with Google provider. Switch provider in Settings to use voice.',
+        timestamp: Date.now(),
+      }]);
+      return;
+    }
+
+    if (!user.googleApiKey) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'model',
+        text: 'Add your Google API key in Settings to enable voice mode.',
+        timestamp: Date.now(),
+      }]);
+      return;
+    }
+
     setIsVoiceActive(true);
     setVoiceStatus('disconnected'); // Start state
     if (liveServiceRef.current) await liveServiceRef.current.disconnect();
 
     const liveService = new LiveService(
       (status) => setVoiceStatus(status),
-      (vol) => setVolume(vol)
+      (vol) => setVolume(vol),
+      user.googleApiKey || ''
     );
     liveServiceRef.current = liveService;
     await liveService.connect(personality);
@@ -406,13 +481,13 @@ const App: React.FC = () => {
       // Auth Screen - unchanged code structure mostly, omitted for brevity as not requested to change
       // Re-using the exact block from previous file content for Auth UI:
       return (
-        <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-black text-white">
+        <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-950 text-white">
             <div className="absolute inset-0 z-0">
-               <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px]"></div>
-               <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-indigo-600/20 rounded-full blur-[100px]"></div>
+               <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-blue-500/15 rounded-full blur-[120px]"></div>
+               <div className="absolute bottom-[-10%] right-[-10%] w-[420px] h-[420px] bg-cyan-500/15 rounded-full blur-[110px]"></div>
             </div>
   
-            <div className="w-full max-w-md bg-[#18181b]/80 backdrop-blur-2xl border border-white/10 p-8 rounded-3xl shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto no-scrollbar">
+            <div className="w-full max-w-md bg-slate-900/75 backdrop-blur-2xl border border-white/10 p-8 rounded-3xl shadow-[0_24px_80px_rgba(2,6,23,0.65)] z-10 animate-in fade-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto no-scrollbar">
                 <div className="text-center mb-6">
                     <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-600/20">
                         <Sparkles className="w-8 h-8 text-white" />
@@ -491,7 +566,7 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="relative">
                                     <UserIcon className="absolute left-3 top-3.5 w-4 h-4 text-zinc-500" />
                                     <input 
@@ -543,11 +618,42 @@ const App: React.FC = () => {
                                     placeholder="Interests / Bio (Optional)"
                                 />
                             </div>
+
+                            <div className="rounded-2xl border border-white/10 bg-[#09090b]/70 p-3 space-y-3">
+                                <p className="text-[11px] uppercase tracking-wider text-zinc-400">AI Provider & API Keys</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setAuthProvider('google')}
+                                      className={clsx("px-3 py-2 rounded-xl text-xs border", authProvider === 'google' ? 'border-blue-500 bg-blue-500/20 text-blue-300' : 'border-white/10 text-zinc-400')}
+                                    >Google</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setAuthProvider('openai')}
+                                      className={clsx("px-3 py-2 rounded-xl text-xs border", authProvider === 'openai' ? 'border-blue-500 bg-blue-500/20 text-blue-300' : 'border-white/10 text-zinc-400')}
+                                    >OpenAI</button>
+                                </div>
+                                <input
+                                  type="password"
+                                  value={authGoogleApiKey}
+                                  onChange={e => setAuthGoogleApiKey(e.target.value)}
+                                  placeholder="Google API key"
+                                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-blue-500 placeholder-zinc-600"
+                                />
+                                <input
+                                  type="password"
+                                  value={authOpenAIApiKey}
+                                  onChange={e => setAuthOpenAIApiKey(e.target.value)}
+                                  placeholder="OpenAI API key"
+                                  className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white text-xs focus:outline-none focus:border-blue-500 placeholder-zinc-600"
+                                />
+                            </div>
                         </div>
                     )}
                     
                     <button 
                       type="submit"
+                      disabled={isLoading}
                       className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-900/20 mt-2 flex items-center justify-center gap-2 group"
                     >
                         {authMode === 'login' ? 'Log In' : 'Get Started'}
@@ -574,9 +680,10 @@ const App: React.FC = () => {
   // --- Main App Render ---
   return (
     <div className="relative h-screen w-full flex flex-col overflow-hidden bg-background text-content font-sans transition-colors duration-300">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(59,130,246,0.12),transparent_35%),radial-gradient(circle_at_90%_10%,rgba(14,165,233,0.08),transparent_25%)]" />
       
       {/* HEADER */}
-      <header className="fixed top-0 left-0 right-0 h-16 z-30 flex items-center justify-between px-4 bg-surface/80 backdrop-blur-xl border-b border-border transition-colors duration-300">
+      <header className="fixed top-0 left-0 right-0 h-16 z-30 flex items-center justify-between px-4 bg-surface/75 backdrop-blur-xl border-b border-border/80 shadow-sm transition-colors duration-300">
         <div className="flex items-center gap-1">
              <button 
                 onClick={() => setShowHistoryModal(true)}
@@ -587,6 +694,7 @@ const App: React.FC = () => {
             </button>
             <button 
                 onClick={handleNewChat}
+                disabled={isLoading}
                 className="p-2 text-muted hover:text-content transition-colors rounded-full hover:bg-black/5 dark:hover:bg-white/10"
                 title="New Chat"
             >
@@ -598,7 +706,7 @@ const App: React.FC = () => {
             onClick={() => !isVoiceActive && setShowPersonalitySelector(true)}
             className="flex flex-col items-center justify-center group pl-2"
         >
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full group-hover:bg-black/5 dark:group-hover:bg-white/5 transition-all">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full group-hover:bg-black/5 dark:group-hover:bg-white/5 transition-all border border-transparent group-hover:border-border/70">
                 <span className="text-[15px] font-semibold tracking-tight text-content">
                     {PERSONALITY_LABELS[personality]}
                 </span>
@@ -606,7 +714,7 @@ const App: React.FC = () => {
             </div>
             {!isVoiceActive && (
                  <div className="flex items-center gap-1.5 h-3">
-                     <span className="text-[10px] text-muted font-medium tracking-wide text-blue-500">ONLINE</span>
+                     <span className="text-[10px] text-muted font-medium tracking-wide text-blue-500">{user.aiProvider.toUpperCase()}</span>
                      {isSaving && (
                          <span className="flex items-center gap-0.5 text-[10px] text-muted animate-in fade-in duration-300">
                              <span className="w-0.5 h-0.5 bg-current rounded-full mx-0.5"></span>
@@ -672,7 +780,7 @@ const App: React.FC = () => {
       <main className="flex-1 relative w-full h-full">
         {/* Adjusted padding-bottom to handle both standard input and voice panel */}
         <div className={clsx(
-            "flex-1 overflow-y-auto px-4 pt-20 space-y-6 no-scrollbar h-full w-full",
+            "flex-1 overflow-y-auto px-4 pt-20 space-y-6 no-scrollbar h-full w-full relative z-10",
             isVoiceActive ? "pb-[320px]" : "pb-40"
         )}>
             {messages.map((msg) => (
@@ -719,10 +827,10 @@ const App: React.FC = () => {
                             {msg.text && (
                                 <div
                                 className={clsx(
-                                    "px-5 py-3 text-[15px] leading-relaxed shadow-sm markdown-body relative group",
+                                    "px-5 py-3 text-[15px] leading-relaxed shadow-md markdown-body relative group",
                                     msg.role === 'user'
-                                    ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-sm"
-                                    : "bg-surface border border-border text-content rounded-2xl rounded-tl-sm"
+                                    ? "bg-blue-600 text-white rounded-2xl rounded-tr-sm"
+                                    : "bg-surface/95 border border-border text-content rounded-2xl rounded-tl-sm"
                                 )}
                                 >
                                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -761,7 +869,7 @@ const App: React.FC = () => {
 
       {/* INPUT AREA (Standard) - Hidden when Voice Active */}
       <div className={clsx(
-          "fixed bottom-0 left-0 right-0 p-4 pb-6 z-40 bg-surface/80 backdrop-blur-xl border-t border-border transition-transform duration-300",
+          "fixed bottom-0 left-0 right-0 p-4 pb-6 z-40 bg-surface/75 backdrop-blur-xl border-t border-border shadow-[0_-12px_28px_rgba(2,6,23,0.12)] transition-transform duration-300",
           isVoiceActive ? "translate-y-full" : "translate-y-0"
       )}>
         <div className="max-w-4xl mx-auto flex flex-col gap-2">
@@ -808,7 +916,7 @@ const App: React.FC = () => {
                     <Plus className="w-5 h-5" strokeWidth={1.5} />
                 </button>
 
-                <div className="flex-1 relative bg-background border border-border rounded-[24px] focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all">
+                <div className="flex-1 relative bg-background/80 border border-border rounded-[24px] focus-within:border-blue-500/60 focus-within:ring-2 focus-within:ring-blue-500/20 shadow-sm transition-all">
                     <textarea
                         rows={1}
                         value={inputText}
@@ -834,6 +942,7 @@ const App: React.FC = () => {
                         {(inputText.length > 0 || attachment) ? (
                             <button 
                                 onClick={handleSendMessage}
+                                disabled={isLoading}
                                 className="p-2 bg-blue-600 rounded-full text-white hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/20"
                             >
                                 <Send className="w-4 h-4" strokeWidth={2} />
@@ -841,6 +950,7 @@ const App: React.FC = () => {
                         ) : (
                             <button 
                                 onClick={startVoiceMode}
+                                disabled={isLoading}
                                 className="p-2 text-muted hover:text-content transition-colors"
                             >
                                 <Mic className="w-5 h-5" strokeWidth={1.5} />
@@ -960,9 +1070,9 @@ const App: React.FC = () => {
 
        {/* --- Profile Settings Modal --- */}
        {showProfileSettings && (
-          <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setShowProfileSettings(false)}>
+          <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300" onClick={() => setShowProfileSettings(false)}>
               <div 
-                  className="w-full max-w-lg bg-surface border border-border rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
+                  className="w-full max-w-lg bg-surface border border-border rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300"
                   onClick={e => e.stopPropagation()}
               >
                   <div className="p-6 border-b border-border flex items-center justify-between bg-background/50">
@@ -980,7 +1090,13 @@ const App: React.FC = () => {
                       </button>
                   </div>
 
-                  <form onSubmit={handleUpdateProfile} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar">
+                  <form onSubmit={handleUpdateProfile} className="p-4 sm:p-6 space-y-6 max-h-[78vh] overflow-y-auto no-scrollbar">
+                        {authError && (
+                            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-medium">
+                                {authError}
+                            </div>
+                        )}
+
                         {/* Avatar Section */}
                         <div className="flex flex-col items-center">
                             <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-border mb-4 bg-background">
@@ -1020,7 +1136,7 @@ const App: React.FC = () => {
                         </div>
 
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-medium text-muted mb-1.5 ml-1">Name</label>
                                     <input 
@@ -1084,6 +1200,52 @@ const App: React.FC = () => {
                                         className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-content text-sm focus:border-blue-500 focus:outline-none placeholder-muted"
                                     />
                                 </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-border space-y-3">
+                                <label className="block text-xs font-medium text-muted mb-1.5 ml-1">AI Provider & API Keys</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAuthProvider('google')}
+                                        className={clsx(
+                                          "px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                                          authProvider === 'google'
+                                            ? "bg-blue-600/10 border-blue-600 text-blue-500"
+                                            : "bg-background border-border text-muted"
+                                        )}
+                                    >
+                                        Google
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAuthProvider('openai')}
+                                        className={clsx(
+                                          "px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                                          authProvider === 'openai'
+                                            ? "bg-blue-600/10 border-blue-600 text-blue-500"
+                                            : "bg-background border-border text-muted"
+                                        )}
+                                    >
+                                        OpenAI
+                                    </button>
+                                </div>
+
+                                <input
+                                    type="password"
+                                    value={authGoogleApiKey}
+                                    onChange={e => setAuthGoogleApiKey(e.target.value)}
+                                    placeholder="Google API key"
+                                    className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-content text-sm focus:border-blue-500 focus:outline-none placeholder-muted"
+                                />
+
+                                <input
+                                    type="password"
+                                    value={authOpenAIApiKey}
+                                    onChange={e => setAuthOpenAIApiKey(e.target.value)}
+                                    placeholder="OpenAI API key"
+                                    className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-content text-sm focus:border-blue-500 focus:outline-none placeholder-muted"
+                                />
                             </div>
                         </div>
 
